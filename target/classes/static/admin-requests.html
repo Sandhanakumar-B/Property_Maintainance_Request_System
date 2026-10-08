@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage All Maintenance Requests - Administrator</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+    <header id="navbar"></header>
+
+    <main class="container">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Manage Maintenance Requests (FR7, BR8)</h1>
+                <p class="page-subtitle">Advance request lifecycles in strict sequential order and monitor all property tickets.</p>
+            </div>
+            <div>
+                <a href="admin-dashboard.html" class="btn btn-secondary btn-sm">&larr; Back to Admin Dashboard</a>
+            </div>
+        </div>
+
+        <!-- Filter Controls -->
+        <div class="card" style="padding: 0.85rem 1.25rem; margin-bottom: 1.25rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;" id="filter-buttons">
+                <button class="btn btn-primary btn-sm" onclick="filterAdminRequests('ALL')">All (<span id="count-all">0</span>)</button>
+                <button class="btn btn-secondary btn-sm" onclick="filterAdminRequests('SUBMITTED')">Submitted (<span id="count-sub">0</span>)</button>
+                <button class="btn btn-secondary btn-sm" onclick="filterAdminRequests('APPROVED/ASSIGNED')">Approved (<span id="count-app">0</span>)</button>
+                <button class="btn btn-secondary btn-sm" onclick="filterAdminRequests('IN_PROGRESS')">In Progress (<span id="count-prog">0</span>)</button>
+                <button class="btn btn-secondary btn-sm" onclick="filterAdminRequests('COMPLETED')">Completed (<span id="count-comp">0</span>)</button>
+                <button class="btn btn-secondary btn-sm" onclick="filterAdminRequests('CANCELLED')">Cancelled (<span id="count-canc">0</span>)</button>
+            </div>
+            <div style="font-size: 0.82rem; color: #64748b;">
+                Sequence: <code>SUBMITTED &rarr; APPROVED/ASSIGNED &rarr; IN_PROGRESS &rarr; COMPLETED</code>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Ticket ID</th>
+                            <th>Requester</th>
+                            <th>Service Resource</th>
+                            <th>Property Ref</th>
+                            <th>Charge</th>
+                            <th>Status</th>
+                            <th>Submitted Date</th>
+                            <th style="text-align: right;">Lifecycle Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admin-table-body">
+                        <tr><td colspan="8" style="text-align: center; color: #64748b; padding: 2rem;">Loading all maintenance requests...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        Property Maintenance Request System &bull; Software Engineering SAT II
+    </footer>
+
+    <script src="js/app.js"></script>
+    <script>
+        let allRequests = [];
+        let currentFilter = 'ALL';
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            renderNavbar('admin-requests');
+
+            if (!Auth.isAdmin()) {
+                window.location.href = 'index.html';
+                return;
+            }
+
+            loadAdminRequests();
+        });
+
+        async function loadAdminRequests() {
+            try {
+                allRequests = await apiFetch('/requests');
+                updateCounts();
+                renderTable();
+            } catch (err) {
+                document.getElementById('admin-table-body').innerHTML = `
+                    <tr><td colspan="8" style="text-align: center; color: #dc2626; padding: 2rem;">Failed to load requests: ${err.message}</td></tr>
+                `;
+            }
+        }
+
+        function updateCounts() {
+            document.getElementById('count-all').textContent = allRequests.length;
+            document.getElementById('count-sub').textContent = allRequests.filter(r => r.status === 'SUBMITTED').length;
+            document.getElementById('count-app').textContent = allRequests.filter(r => r.status === 'APPROVED/ASSIGNED').length;
+            document.getElementById('count-prog').textContent = allRequests.filter(r => r.status === 'IN_PROGRESS').length;
+            document.getElementById('count-comp').textContent = allRequests.filter(r => r.status === 'COMPLETED').length;
+            document.getElementById('count-canc').textContent = allRequests.filter(r => r.status === 'CANCELLED').length;
+        }
+
+        function filterAdminRequests(filter) {
+            currentFilter = filter;
+            const buttons = document.querySelectorAll('#filter-buttons button');
+            buttons.forEach(b => {
+                b.className = b.textContent.toUpperCase().includes(filter) ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
+            });
+            renderTable();
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('admin-table-body');
+            let filtered = allRequests;
+
+            if (currentFilter !== 'ALL') {
+                filtered = allRequests.filter(r => r.status === currentFilter);
+            }
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" style="text-align: center; color: #64748b; padding: 2rem;">
+                            No requests found matching the selected filter.
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(req => {
+                let actionBtn = '';
+                if (req.status === 'SUBMITTED') {
+                    actionBtn = `<button class="btn btn-primary btn-sm" onclick="advanceRequestStatus(${req.requestId}, 'APPROVED/ASSIGNED')">Approve &rarr;</button>`;
+                } else if (req.status === 'APPROVED/ASSIGNED') {
+                    actionBtn = `<button class="btn btn-primary btn-sm" onclick="advanceRequestStatus(${req.requestId}, 'IN_PROGRESS')">Start Work &rarr;</button>`;
+                } else if (req.status === 'IN_PROGRESS') {
+                    actionBtn = `<button class="btn btn-success btn-sm" onclick="advanceRequestStatus(${req.requestId}, 'COMPLETED')">Complete ✅</button>`;
+                }
+
+                return `
+                    <tr>
+                        <td><strong>#${req.requestId}</strong></td>
+                        <td>
+                            <strong>${req.user ? req.user.name : '-'}</strong>
+                            <div style="font-size: 0.78rem; color: #64748b;">${req.user ? req.user.phone : ''}</div>
+                        </td>
+                        <td>
+                            <div>${req.serviceType}</div>
+                            <small style="color: #64748b;">${req.resource ? req.resource.reference : ''}</small>
+                        </td>
+                        <td><code>${req.reference}</code></td>
+                        <td><strong>Rs. ${parseFloat(req.charge).toFixed(2)}</strong></td>
+                        <td>${getStatusBadge(req.status)}</td>
+                        <td>${formatDate(req.submittedDate)}</td>
+                        <td style="text-align: right; white-space: nowrap;">
+                            <a href="request-details.html?id=${req.requestId}" class="btn btn-secondary btn-sm">Details & Audit</a>
+                            ${actionBtn}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        async function advanceRequestStatus(requestId, nextStatus) {
+            const admin = Auth.getUser();
+            try {
+                await apiFetch(`/requests/${requestId}/status`, {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        newStatus: nextStatus,
+                        actorId: admin.id
+                    })
+                });
+                showToast(`Request #${requestId} advanced to ${nextStatus}`, 'success');
+                loadAdminRequests();
+            } catch (err) {
+                showToast(`Status update failed: ${err.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>

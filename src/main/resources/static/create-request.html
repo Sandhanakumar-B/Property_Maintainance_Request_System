@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submit Maintenance Request - Property Maintenance Request System</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+    <header id="navbar"></header>
+
+    <main class="container" style="max-width: 780px;">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Submit Maintenance Request</h1>
+                <p class="page-subtitle">Fill in the property service details below to generate a new maintenance ticket.</p>
+            </div>
+            <div>
+                <a href="user-dashboard.html" class="btn btn-secondary btn-sm">&larr; Back to Dashboard</a>
+            </div>
+        </div>
+
+        <div id="alert-container"></div>
+
+        <div class="card">
+            <form id="create-request-form">
+                <!-- User Information (Readonly Snapshot Preview) -->
+                <div style="background: #f8fafc; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1rem; margin-bottom: 1.5rem;">
+                    <h3 style="font-size: 0.95rem; font-weight: 700; color: #475569; margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em;">
+                        Requester Snapshot Details (BR3, BR5)
+                    </h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label">Full Name <span class="required">*</span></label>
+                            <input type="text" id="user-name" class="form-control" required>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label">Phone Number (10 Digits) <span class="required">*</span></label>
+                            <input type="tel" id="user-phone" class="form-control" maxlength="10" placeholder="e.g. 0771234567" required>
+                            <div class="form-hint">Must be exactly 10 numeric digits (BR5).</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Service / Resource Selection -->
+                <div class="form-group">
+                    <label class="form-label">Select Maintenance Service / Resource <span class="required">*</span></label>
+                    <select id="resource-select" class="form-control" required>
+                        <option value="">-- Choose a Service Resource --</option>
+                    </select>
+                    <div class="form-hint" id="resource-hint">Available capacity is validated before submission (BR2).</div>
+                </div>
+
+                <!-- Property / Request Reference -->
+                <div class="form-group">
+                    <label class="form-label">Property / Unit Reference <span class="required">*</span></label>
+                    <input type="text" id="request-reference" class="form-control" placeholder="e.g. Apt 4B - Building North" required>
+                    <div class="form-hint">Reference identifier for the property unit or location.</div>
+                </div>
+
+                <!-- Description of Maintenance Issue -->
+                <div class="form-group">
+                    <label class="form-label">Issue Description <span class="required">*</span></label>
+                    <textarea id="request-description" class="form-control" placeholder="Describe the maintenance requirement in detail..." required></textarea>
+                </div>
+
+                <!-- Chargeable Amount & Dynamic Calculation (BR4) -->
+                <div class="form-group">
+                    <label class="form-label">Chargeable Amount (Rs.)</label>
+                    <input type="number" id="chargeable-amount" class="form-control" min="0" step="0.01" placeholder="0.00">
+                    <div class="form-hint">Under BR4: Charge is Rs. 50 for amounts under Rs. 1,000; Rs. 0 for Rs. 1,000 and above.</div>
+                </div>
+
+                <!-- Live Charge Calculation Summary Card -->
+                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: var(--radius-sm); padding: 1.25rem; margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-size: 0.85rem; color: #1e40af; font-weight: 600; text-transform: uppercase;">Applicable Service Charge (FR3, BR4)</div>
+                        <div style="font-size: 0.8rem; color: #3b82f6;" id="charge-rule-note">Calculated in real-time</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <span style="font-size: 1.6rem; font-weight: 800; color: #1d4ed8;" id="charge-display">Rs. 0.00</span>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 1rem;">
+                    <a href="user-dashboard.html" class="btn btn-secondary">Cancel</a>
+                    <button type="submit" id="btn-submit" class="btn btn-primary">
+                        🚀 Confirm & Submit Request
+                    </button>
+                </div>
+            </form>
+        </div>
+    </main>
+
+    <footer class="footer">
+        Property Maintenance Request System &bull; Software Engineering SAT II
+    </footer>
+
+    <script src="js/app.js"></script>
+    <script>
+        let resourcesList = [];
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            renderNavbar('create-request');
+
+            const user = Auth.getUser();
+            if (!user) {
+                window.location.href = 'index.html';
+                return;
+            }
+
+            // Autofill user details
+            document.getElementById('user-name').value = user.name || '';
+            document.getElementById('user-phone').value = user.phone || '';
+
+            // Check eligibility first (BR1, BR2)
+            try {
+                const elig = await apiFetch(`/users/${user.id}/eligibility`);
+                if (elig.activeRequestCount >= 5) {
+                    showAlert('warning', `⚠️ <strong>Active Request Limit Reached:</strong> You currently have 5 active requests. Under Rule BR1, submission is blocked until an existing request is completed or cancelled.`);
+                    document.getElementById('btn-submit').disabled = true;
+                } else if (!elig.canSubmitRequest) {
+                    showAlert('danger', `🚫 <strong>Account Inactive:</strong> Your account is inactive under Rule BR2. Cannot submit.`);
+                    document.getElementById('btn-submit').disabled = true;
+                }
+            } catch (e) {
+                console.error(e);
+            }
+
+            // Load Resources (S101, S102, S103)
+            try {
+                resourcesList = await apiFetch('/resources');
+                const select = document.getElementById('resource-select');
+                select.innerHTML = '<option value="">-- Choose a Service Resource --</option>';
+
+                resourcesList.forEach(res => {
+                    const opt = document.createElement('option');
+                    opt.value = res.id;
+                    const isAvailable = res.status === 'ACTIVE' && res.availableCapacity > 0;
+                    opt.textContent = `${res.reference} - ${res.name} (Available: ${res.availableCapacity}/${res.capacity}) ${isAvailable ? '' : '[UNAVAILABLE]'}`;
+                    if (!isAvailable) {
+                        opt.style.color = '#94a3b8';
+                    }
+                    select.appendChild(opt);
+                });
+            } catch (err) {
+                showAlert('danger', 'Failed to load maintenance resources.');
+            }
+
+            // Live Charge Calculation Listener (BR4)
+            const amountInput = document.getElementById('chargeable-amount');
+            amountInput.addEventListener('input', calculateChargePreview);
+
+            // Form Submit Listener
+            document.getElementById('create-request-form').addEventListener('submit', handleSubmitRequest);
+        });
+
+        async function calculateChargePreview() {
+            const rawVal = document.getElementById('chargeable-amount').value;
+            const amount = parseFloat(rawVal) || 0;
+            const chargeDisplay = document.getElementById('charge-display');
+            const ruleNote = document.getElementById('charge-rule-note');
+
+            try {
+                const res = await apiFetch(`/requests/calculate-charge?chargeableAmount=${amount}`);
+                const charge = parseFloat(res.charge);
+                chargeDisplay.textContent = `Rs. ${charge.toFixed(2)}`;
+
+                if (amount <= 0) {
+                    ruleNote.textContent = 'No chargeable amount applied (Rs. 0.00)';
+                } else if (amount < 1000) {
+                    ruleNote.textContent = 'Below Rs. 1,000 threshold &rarr; Rs. 50.00 standard charge applied (BR4)';
+                } else {
+                    ruleNote.textContent = 'Rs. 1,000 or above &rarr; Free service (Rs. 0.00) (BR4)';
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function handleSubmitRequest(e) {
+            e.preventDefault();
+
+            const user = Auth.getUser();
+            const resourceId = document.getElementById('resource-select').value;
+            const name = document.getElementById('user-name').value.trim();
+            const phone = document.getElementById('user-phone').value.trim();
+            const reference = document.getElementById('request-reference').value.trim();
+            const description = document.getElementById('request-description').value.trim();
+            const chargeableAmount = parseFloat(document.getElementById('chargeable-amount').value) || 0;
+
+            // Client-side format checks (BR5)
+            if (!/^[0-9]{10}$/.test(phone)) {
+                showAlert('danger', 'Validation Error (BR5): Phone number must contain exactly 10 digits.');
+                return;
+            }
+
+            if (!resourceId) {
+                showAlert('danger', 'Please select a maintenance service resource.');
+                return;
+            }
+
+            const selectedResource = resourcesList.find(r => r.id == resourceId);
+            const serviceType = selectedResource ? selectedResource.name : '';
+
+            const payload = {
+                userId: user.id,
+                resourceId: parseInt(resourceId),
+                name: name,
+                phone: phone,
+                reference: reference,
+                serviceType: serviceType,
+                description: description,
+                chargeableAmount: chargeableAmount
+            };
+
+            const submitBtn = document.getElementById('btn-submit');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting...';
+
+            try {
+                const created = await apiFetch('/requests', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+
+                showToast(`Request #${created.requestId} created successfully!`, 'success');
+                setTimeout(() => {
+                    window.location.href = `request-details.html?id=${created.requestId}`;
+                }, 800);
+            } catch (err) {
+                showAlert('danger', `Submission Failed: ${err.message}`);
+                submitBtn.disabled = false;
+                submitBtn.textContent = '🚀 Confirm & Submit Request';
+            }
+        }
+
+        function showAlert(type, html) {
+            const container = document.getElementById('alert-container');
+            container.innerHTML = `<div class="alert alert-${type}">${html}</div>`;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>

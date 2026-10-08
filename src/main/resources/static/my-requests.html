@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Maintenance Requests - Property Maintenance Request System</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+    <header id="navbar"></header>
+
+    <main class="container">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">My Maintenance Requests</h1>
+                <p class="page-subtitle">Track status progress, view submission history, and manage your tickets.</p>
+            </div>
+            <div>
+                <a href="create-request.html" class="btn btn-primary">➕ New Request</a>
+            </div>
+        </div>
+
+        <!-- Filter Controls -->
+        <div class="card" style="padding: 0.85rem 1.25rem; margin-bottom: 1.25rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+            <div style="display: flex; gap: 0.5rem;" id="filter-buttons">
+                <button class="btn btn-primary btn-sm" onclick="filterRequests('ALL')">All (<span id="count-all">0</span>)</button>
+                <button class="btn btn-secondary btn-sm" onclick="filterRequests('ACTIVE')">Active (<span id="count-active">0</span>)</button>
+                <button class="btn btn-secondary btn-sm" onclick="filterRequests('COMPLETED')">Completed (<span id="count-completed">0</span>)</button>
+                <button class="btn btn-secondary btn-sm" onclick="filterRequests('CANCELLED')">Cancelled (<span id="count-cancelled">0</span>)</button>
+            </div>
+            <div style="font-size: 0.85rem; color: #64748b;">
+                ℹ️ <em>Cancellation is permitted only for requests in <strong>SUBMITTED</strong> status (BR8, BR9).</em>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Ticket ID</th>
+                            <th>Service Resource</th>
+                            <th>Reference</th>
+                            <th>Description</th>
+                            <th>Charge</th>
+                            <th>Status</th>
+                            <th>Submitted Date</th>
+                            <th style="text-align: right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="requests-table-body">
+                        <tr>
+                            <td colspan="8" style="text-align: center; color: #64748b; padding: 2rem;">Loading your requests...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Cancel Confirmation Modal -->
+    <div class="modal-backdrop" id="cancel-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title" style="color: var(--danger);">Confirm Request Cancellation</h3>
+                <button onclick="closeCancelModal()" style="border: none; background: none; font-size: 1.25rem; cursor: pointer;">&times;</button>
+            </div>
+            <p style="color: #475569; font-size: 0.95rem; margin-bottom: 1rem;">
+                Are you sure you want to cancel Maintenance Ticket <strong id="modal-cancel-ticket-id">#</strong>?
+            </p>
+            <div class="alert alert-info" style="font-size: 0.85rem;">
+                Upon cancellation, the reserved resource capacity will be immediately released back to the pool (BR9).
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeCancelModal()">Keep Request</button>
+                <button class="btn btn-danger" id="modal-btn-confirm-cancel" onclick="executeCancelRequest()">Yes, Cancel Request</button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        Property Maintenance Request System &bull; Software Engineering SAT II
+    </footer>
+
+    <script src="js/app.js"></script>
+    <script>
+        let allUserRequests = [];
+        let currentFilter = 'ALL';
+        let targetCancelRequestId = null;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            renderNavbar('my-requests');
+            loadUserRequests();
+        });
+
+        async function loadUserRequests() {
+            const user = Auth.getUser();
+            if (!user) {
+                window.location.href = 'index.html';
+                return;
+            }
+
+            try {
+                allUserRequests = await apiFetch(`/requests/user/${user.id}`);
+                updateCounts();
+                renderTable();
+            } catch (err) {
+                document.getElementById('requests-table-body').innerHTML = `
+                    <tr><td colspan="8" style="text-align: center; color: #dc2626; padding: 2rem;">Failed to load requests: ${err.message}</td></tr>
+                `;
+            }
+        }
+
+        function updateCounts() {
+            document.getElementById('count-all').textContent = allUserRequests.length;
+            const activeCount = allUserRequests.filter(r => ['SUBMITTED', 'APPROVED/ASSIGNED', 'IN_PROGRESS'].includes(r.status)).length;
+            document.getElementById('count-active').textContent = activeCount;
+            document.getElementById('count-completed').textContent = allUserRequests.filter(r => r.status === 'COMPLETED').length;
+            document.getElementById('count-cancelled').textContent = allUserRequests.filter(r => r.status === 'CANCELLED').length;
+        }
+
+        function filterRequests(filter) {
+            currentFilter = filter;
+            const buttons = document.querySelectorAll('#filter-buttons button');
+            buttons.forEach(b => {
+                b.className = b.textContent.toUpperCase().includes(filter) ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
+            });
+            renderTable();
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('requests-table-body');
+            let filtered = allUserRequests;
+
+            if (currentFilter === 'ACTIVE') {
+                filtered = allUserRequests.filter(r => ['SUBMITTED', 'APPROVED/ASSIGNED', 'IN_PROGRESS'].includes(r.status));
+            } else if (currentFilter === 'COMPLETED') {
+                filtered = allUserRequests.filter(r => r.status === 'COMPLETED');
+            } else if (currentFilter === 'CANCELLED') {
+                filtered = allUserRequests.filter(r => r.status === 'CANCELLED');
+            }
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" style="text-align: center; color: #64748b; padding: 2rem;">
+                            No requests found matching the current filter.
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(req => {
+                const canCancel = req.status === 'SUBMITTED';
+                const shortDesc = req.description.length > 35 ? req.description.substring(0, 35) + '...' : req.description;
+
+                return `
+                    <tr>
+                        <td><strong>#${req.requestId}</strong></td>
+                        <td>
+                            <div>${req.serviceType}</div>
+                            <small style="color: #64748b;">${req.resource ? req.resource.reference : ''}</small>
+                        </td>
+                        <td><code>${req.reference}</code></td>
+                        <td title="${req.description}">${shortDesc}</td>
+                        <td><strong>Rs. ${parseFloat(req.charge).toFixed(2)}</strong></td>
+                        <td>${getStatusBadge(req.status)}</td>
+                        <td>${formatDate(req.submittedDate)}</td>
+                        <td style="text-align: right; white-space: nowrap;">
+                            <a href="request-details.html?id=${req.requestId}" class="btn btn-secondary btn-sm">View Details</a>
+                            ${canCancel ? `
+                                <button class="btn btn-danger btn-sm" onclick="promptCancel(${req.requestId})">Cancel</button>
+                            ` : ''}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function promptCancel(requestId) {
+            targetCancelRequestId = requestId;
+            document.getElementById('modal-cancel-ticket-id').textContent = `#${requestId}`;
+            document.getElementById('cancel-modal').classList.add('show');
+        }
+
+        function closeCancelModal() {
+            targetCancelRequestId = null;
+            document.getElementById('cancel-modal').classList.remove('show');
+        }
+
+        async function executeCancelRequest() {
+            if (!targetCancelRequestId) return;
+            const user = Auth.getUser();
+            const btn = document.getElementById('modal-btn-confirm-cancel');
+            btn.disabled = true;
+            btn.textContent = 'Cancelling...';
+
+            try {
+                await apiFetch(`/requests/${targetCancelRequestId}/cancel?userId=${user.id}`, {
+                    method: 'PUT'
+                });
+                showToast(`Request #${targetCancelRequestId} cancelled successfully.`, 'success');
+                closeCancelModal();
+                loadUserRequests();
+            } catch (err) {
+                showToast(`Cancel failed: ${err.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Yes, Cancel Request';
+            }
+        }
+    </script>
+</body>
+</html>

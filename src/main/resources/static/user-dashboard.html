@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Dashboard - Property Maintenance Request System</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+    <header id="navbar"></header>
+
+    <main class="container">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title" id="welcome-heading">Welcome, User</h1>
+                <p class="page-subtitle">Manage your property maintenance requests and check service statuses.</p>
+            </div>
+            <div>
+                <a href="create-request.html" id="btn-new-request" class="btn btn-primary">
+                    ➕ Submit New Request
+                </a>
+            </div>
+        </div>
+
+        <!-- Limit / Eligibility Banner -->
+        <div id="eligibility-banner" style="display: none;"></div>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon blue">📋</div>
+                <div>
+                    <div class="stat-value" id="stat-active-count">0 / 5</div>
+                    <div class="stat-label">Active Requests (BR1 Limit)</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon green">✅</div>
+                <div>
+                    <div class="stat-value" id="stat-completed-count">0</div>
+                    <div class="stat-label">Completed Requests</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon purple">📊</div>
+                <div>
+                    <div class="stat-value" id="stat-total-count">0</div>
+                    <div class="stat-label">Total Submissions</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon yellow" id="stat-eligibility-icon">⚡</div>
+                <div>
+                    <div class="stat-value" style="font-size: 1.25rem;" id="stat-eligibility-text">Checking...</div>
+                    <div class="stat-label">Submission Eligibility</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Requests Card -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">My Recent Maintenance Requests</h2>
+                <a href="my-requests.html" class="btn btn-secondary btn-sm">View All &rarr;</a>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Ticket ID</th>
+                            <th>Service Type</th>
+                            <th>Reference</th>
+                            <th>Applicable Charge</th>
+                            <th>Status</th>
+                            <th>Submitted Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recent-requests-body">
+                        <tr>
+                            <td colspan="7" style="text-align: center; color: #64748b;">Loading requests...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        Property Maintenance Request System &bull; Software Engineering SAT II
+    </footer>
+
+    <script src="js/app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            renderNavbar('user-dashboard');
+
+            const user = Auth.getUser();
+            if (!user) {
+                window.location.href = 'index.html';
+                return;
+            }
+
+            document.getElementById('welcome-heading').textContent = `Welcome, ${user.name}`;
+
+            try {
+                // 1. Fetch Eligibility & Active Count (BR1, BR2)
+                const elig = await apiFetch(`/users/${user.id}/eligibility`);
+                document.getElementById('stat-active-count').textContent = `${elig.activeRequestCount} / 5`;
+                
+                const eligBanner = document.getElementById('eligibility-banner');
+                const btnNew = document.getElementById('btn-new-request');
+
+                if (elig.activeRequestCount >= 5) {
+                    eligBanner.style.display = 'block';
+                    eligBanner.className = 'alert alert-warning';
+                    eligBanner.innerHTML = `⚠️ <strong>Active Request Limit Reached:</strong> You have 5 active requests (SUBMITTED, APPROVED/ASSIGNED, or IN_PROGRESS). Under Rule BR1, new submissions are blocked until an existing request is completed or cancelled.`;
+                    btnNew.className = 'btn btn-secondary';
+                    btnNew.title = 'Active limit reached';
+                    document.getElementById('stat-eligibility-text').textContent = 'Limit Reached';
+                    document.getElementById('stat-eligibility-text').style.color = '#d97706';
+                } else if (!elig.canSubmitRequest) {
+                    eligBanner.style.display = 'block';
+                    eligBanner.className = 'alert alert-danger';
+                    eligBanner.innerHTML = `🚫 <strong>Account Inactive:</strong> Your account is currently inactive under Rule BR2. You cannot submit new requests.`;
+                    btnNew.style.display = 'none';
+                    document.getElementById('stat-eligibility-text').textContent = 'Inactive';
+                    document.getElementById('stat-eligibility-text').style.color = '#dc2626';
+                } else {
+                    document.getElementById('stat-eligibility-text').textContent = 'Eligible';
+                    document.getElementById('stat-eligibility-text').style.color = '#16a34a';
+                }
+
+                // 2. Fetch User's Requests
+                const requests = await apiFetch(`/requests/user/${user.id}`);
+                document.getElementById('stat-total-count').textContent = requests.length;
+
+                const completed = requests.filter(r => r.status === 'COMPLETED').length;
+                document.getElementById('stat-completed-count').textContent = completed;
+
+                const tbody = document.getElementById('recent-requests-body');
+                if (requests.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="7" style="text-align: center; color: #64748b; padding: 2rem;">
+                                No maintenance requests found. Click <strong>Submit New Request</strong> to create one.
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                const recent = requests.slice(0, 5);
+                tbody.innerHTML = recent.map(req => `
+                    <tr>
+                        <td><strong>#${req.requestId}</strong></td>
+                        <td>${req.serviceType}</td>
+                        <td><code>${req.reference}</code></td>
+                        <td><strong>Rs. ${parseFloat(req.charge).toFixed(2)}</strong></td>
+                        <td>${getStatusBadge(req.status)}</td>
+                        <td>${formatDate(req.submittedDate)}</td>
+                        <td>
+                            <a href="request-details.html?id=${req.requestId}" class="btn btn-secondary btn-sm">View Details</a>
+                        </td>
+                    </tr>
+                `).join('');
+
+            } catch (err) {
+                console.error(err);
+            }
+        });
+    </script>
+</body>
+</html>

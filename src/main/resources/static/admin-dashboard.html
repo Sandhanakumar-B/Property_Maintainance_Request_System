@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Property Maintenance Request System</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+    <header id="navbar"></header>
+
+    <main class="container">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Administrator Dashboard</h1>
+                <p class="page-subtitle">Monitor service capacities, manage tickets, and supervise maintenance requests.</p>
+            </div>
+            <div>
+                <a href="admin-requests.html" class="btn btn-primary">🛠️ Manage All Requests</a>
+            </div>
+        </div>
+
+        <!-- Global Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon blue">📥</div>
+                <div>
+                    <div class="stat-value" id="stat-submitted-count">0</div>
+                    <div class="stat-label">Pending Approval (SUBMITTED)</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon yellow">⚙️</div>
+                <div>
+                    <div class="stat-value" id="stat-active-processing">0</div>
+                    <div class="stat-label">In-Progress / Assigned</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon green">✅</div>
+                <div>
+                    <div class="stat-value" id="stat-completed-total">0</div>
+                    <div class="stat-label">Completed Tickets</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon purple">📊</div>
+                <div>
+                    <div class="stat-value" id="stat-all-total">0</div>
+                    <div class="stat-label">Total Requests</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Resource Capacities Monitor Card -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Maintenance Services & Resource Capacity (BR2, BR7, BR9)</h2>
+                <span style="font-size: 0.85rem; color: #64748b;">Live Database Capacity Tracking</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Resource Code</th>
+                            <th>Service Name</th>
+                            <th>Total Capacity</th>
+                            <th>Available Capacity</th>
+                            <th>Resource Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resources-table-body">
+                        <tr><td colspan="5" style="text-align: center; color: #64748b;">Loading resources...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Pending Action Requests -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Requests Awaiting Action</h2>
+                <a href="admin-requests.html" class="btn btn-secondary btn-sm">View All Tickets &rarr;</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Ticket ID</th>
+                            <th>Requester</th>
+                            <th>Service</th>
+                            <th>Reference</th>
+                            <th>Charge</th>
+                            <th>Status</th>
+                            <th>Submitted</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pending-table-body">
+                        <tr><td colspan="8" style="text-align: center; color: #64748b;">Loading requests...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        Property Maintenance Request System &bull; Software Engineering SAT II
+    </footer>
+
+    <script src="js/app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            renderNavbar('admin-dashboard');
+
+            if (!Auth.isAdmin()) {
+                window.location.href = 'index.html';
+                return;
+            }
+
+            try {
+                // 1. Load Resource Capacities
+                const resources = await apiFetch('/resources');
+                const resTbody = document.getElementById('resources-table-body');
+                resTbody.innerHTML = resources.map(res => `
+                    <tr>
+                        <td><strong>${res.reference}</strong></td>
+                        <td>${res.name}</td>
+                        <td>${res.capacity} slots</td>
+                        <td>
+                            <strong style="color: ${res.availableCapacity > 0 ? '#16a34a' : '#dc2626'};">
+                                ${res.availableCapacity} slots available
+                            </strong>
+                        </td>
+                        <td>
+                            <span class="badge ${res.status === 'ACTIVE' ? 'badge-active' : 'badge-inactive'}">
+                                ${res.status}
+                            </span>
+                        </td>
+                    </tr>
+                `).join('');
+
+                // 2. Load All Requests
+                const requests = await apiFetch('/requests');
+                document.getElementById('stat-all-total').textContent = requests.length;
+
+                const submitted = requests.filter(r => r.status === 'SUBMITTED');
+                document.getElementById('stat-submitted-count').textContent = submitted.length;
+
+                const inProgress = requests.filter(r => ['APPROVED/ASSIGNED', 'IN_PROGRESS'].includes(r.status));
+                document.getElementById('stat-active-processing').textContent = inProgress.length;
+
+                const completed = requests.filter(r => r.status === 'COMPLETED');
+                document.getElementById('stat-completed-total').textContent = completed.length;
+
+                // Pending Table
+                const pendingTbody = document.getElementById('pending-table-body');
+                const actionable = requests.filter(r => ['SUBMITTED', 'APPROVED/ASSIGNED', 'IN_PROGRESS'].includes(r.status));
+
+                if (actionable.length === 0) {
+                    pendingTbody.innerHTML = `
+                        <tr>
+                            <td colspan="8" style="text-align: center; color: #64748b; padding: 2rem;">
+                                No pending requests awaiting action at this time.
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                pendingTbody.innerHTML = actionable.slice(0, 6).map(req => `
+                    <tr>
+                        <td><strong>#${req.requestId}</strong></td>
+                        <td>${req.user ? req.user.name : '-'}</td>
+                        <td>${req.serviceType}</td>
+                        <td><code>${req.reference}</code></td>
+                        <td><strong>Rs. ${parseFloat(req.charge).toFixed(2)}</strong></td>
+                        <td>${getStatusBadge(req.status)}</td>
+                        <td>${formatDate(req.submittedDate)}</td>
+                        <td>
+                            <a href="request-details.html?id=${req.requestId}" class="btn btn-primary btn-sm">Process &rarr;</a>
+                        </td>
+                    </tr>
+                `).join('');
+
+            } catch (err) {
+                console.error(err);
+            }
+        });
+    </script>
+</body>
+</html>

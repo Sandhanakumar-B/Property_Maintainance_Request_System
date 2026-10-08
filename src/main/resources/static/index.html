@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Property Maintenance Request System - Account Selection</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+    <div class="container" style="max-width: 800px; margin-top: 4rem;">
+        <div style="text-align: center; margin-bottom: 2.5rem;">
+            <div style="display: inline-flex; width: 64px; height: 64px; background: linear-gradient(135deg, #2563eb, #3b82f6); color: white; border-radius: 12px; align-items: center; justify-content: center; font-size: 2rem; margin-bottom: 1rem;">🔧</div>
+            <h1 style="font-size: 2rem; font-weight: 800; color: #1e293b;">Property Maintenance Request System</h1>
+            <p style="color: #64748b; font-size: 1.05rem; margin-top: 0.5rem;">Software Engineering Assessment Working Prototype</p>
+        </div>
+
+        <div class="alert alert-info">
+            <span>ℹ️ <strong>Simulated Authentication Mode:</strong> Click any account below to simulate logging in. No password required.</span>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Select User Account</h2>
+                <span style="font-size: 0.85rem; color: #64748b;">(2 Users + 1 Admin)</span>
+            </div>
+
+            <div id="users-list" style="display: flex; flex-direction: column; gap: 1rem;">
+                <p style="color: #64748b; text-align: center;">Loading accounts from database...</p>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        Property Maintenance Request System &bull; Software Engineering SAT II
+    </footer>
+
+    <script src="js/app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const listEl = document.getElementById('users-list');
+            try {
+                const users = await apiFetch('/users');
+                listEl.innerHTML = '';
+
+                users.forEach(user => {
+                    const isAdmin = user.role === 'ADMINISTRATOR';
+                    const userCard = document.createElement('div');
+                    userCard.style.border = '1px solid #e2e8f0';
+                    userCard.style.borderRadius = '8px';
+                    userCard.style.padding = '1.25rem';
+                    userCard.style.display = 'flex';
+                    userCard.style.justifyContent = 'space-between';
+                    userCard.style.alignItems = 'center';
+                    userCard.style.backgroundColor = '#ffffff';
+                    userCard.style.transition = 'all 0.2s ease';
+
+                    userCard.innerHTML = `
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.25rem;">
+                                <strong style="font-size: 1.1rem; color: #1e293b;">${user.name}</strong>
+                                <span class="user-role-tag ${isAdmin ? 'role-admin' : 'role-user'}">${user.role}</span>
+                                <span class="badge ${user.status === 'ACTIVE' ? 'badge-active' : 'badge-inactive'}">${user.status}</span>
+                            </div>
+                            <div style="font-size: 0.88rem; color: #64748b;">
+                                <span>📧 ${user.email}</span> &bull; 
+                                <span>📞 ${user.phone}</span>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary btn-sm" onclick="selectUser(${user.id}, '${user.name}', '${user.phone}', '${user.email}', '${user.role}', '${user.status}')">
+                            Login as ${user.name} &rarr;
+                        </button>
+                    `;
+                    listEl.appendChild(userCard);
+                });
+            } catch (err) {
+                listEl.innerHTML = `<div class="alert alert-danger">Failed to load users. Ensure Spring Boot backend is running. (${err.message})</div>`;
+            }
+        });
+
+        function selectUser(id, name, phone, email, role, status) {
+            const userObj = { id, name, phone, email, role, status };
+            Auth.setUser(userObj);
+            showToast(`Logged in as ${name} (${role})`, 'success');
+
+            setTimeout(() => {
+                if (role === 'ADMINISTRATOR') {
+                    window.location.href = 'admin-dashboard.html';
+                } else {
+                    window.location.href = 'user-dashboard.html';
+                }
+            }, 300);
+        }
+    </script>
+</body>
+</html>

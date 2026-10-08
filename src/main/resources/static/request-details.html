@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maintenance Request Details - Property Maintenance Request System</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+    <header id="navbar"></header>
+
+    <main class="container" style="max-width: 900px;">
+        <div class="page-header">
+            <div>
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <h1 class="page-title" id="ticket-title">Maintenance Ticket Details</h1>
+                    <span id="header-status-badge"></span>
+                </div>
+                <p class="page-subtitle" id="ticket-subtitle">Viewing ticket details, audit trail, and snapshot data.</p>
+            </div>
+            <div id="header-actions">
+                <a href="#" id="btn-back" class="btn btn-secondary btn-sm">&larr; Back</a>
+            </div>
+        </div>
+
+        <div id="alert-container"></div>
+
+        <!-- Request Summary & Details -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Ticket Information</h2>
+                <span id="ticket-charge-badge" style="font-size: 1.1rem; font-weight: 700; color: #1d4ed8;"></span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem;">
+                <div>
+                    <label class="form-label" style="color: #64748b;">Ticket ID</label>
+                    <div style="font-size: 1.05rem; font-weight: 700;" id="detail-ticket-id">-</div>
+                </div>
+                <div>
+                    <label class="form-label" style="color: #64748b;">Service Type</label>
+                    <div style="font-size: 1.05rem; font-weight: 600;" id="detail-service-type">-</div>
+                </div>
+                <div>
+                    <label class="form-label" style="color: #64748b;">Property Reference</label>
+                    <div style="font-size: 1.05rem; font-weight: 600;" id="detail-reference">-</div>
+                </div>
+                <div>
+                    <label class="form-label" style="color: #64748b;">Submitted Date</label>
+                    <div style="font-size: 1rem;" id="detail-submitted-date">-</div>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 1.25rem;">
+                <label class="form-label" style="color: #64748b;">Issue Description</label>
+                <div style="background: #f8fafc; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.85rem 1rem;" id="detail-description">
+                    -
+                </div>
+            </div>
+
+            <!-- Admin Status Advancement Action Bar (BR8) -->
+            <div id="admin-action-bar" style="display: none; background: #fffbeb; border: 1px solid #fde68a; border-radius: var(--radius-sm); padding: 1.25rem; margin-top: 1.5rem;">
+                <h3 style="font-size: 0.95rem; font-weight: 700; color: #92400e; margin-bottom: 0.5rem; text-transform: uppercase;">
+                    Administrator Status Controls (FR7, BR8)
+                </h3>
+                <p style="font-size: 0.88rem; color: #78350f; margin-bottom: 0.75rem;" id="admin-status-instruction">
+                    Advance the lifecycle of this request according to standard workflow rules.
+                </p>
+                <div style="display: flex; gap: 0.75rem; align-items: center;" id="admin-buttons-container">
+                    <!-- Dynamic transition buttons inserted here -->
+                </div>
+            </div>
+
+            <!-- User Cancel Action Bar (FR8, BR9) -->
+            <div id="user-cancel-bar" style="display: none; margin-top: 1.5rem; text-align: right;">
+                <button class="btn btn-danger" onclick="promptCancelCurrent()">
+                    🗑️ Cancel Maintenance Request
+                </button>
+            </div>
+        </div>
+
+        <!-- Preserved Historical Snapshot (BR3) -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Preserved Request Snapshot (BR3)</h2>
+                <span style="font-size: 0.8rem; background: #f1f5f9; padding: 2px 8px; border-radius: 4px; color: #475569;">Immutable Historical Record</span>
+            </div>
+            <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1rem;">
+                Rule BR3 mandates that submitted details and resource parameters remain preserved exactly as recorded at the time of submission.
+            </p>
+            <div class="table-responsive">
+                <table class="table" style="font-size: 0.88rem;">
+                    <tbody id="snapshot-table-body">
+                        <tr><td style="color: #64748b;">Loading snapshot...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Audit Trail / Status History (FR5, BR7) -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Status History & Audit Trail (FR5, BR7)</h2>
+            </div>
+            <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1rem;">
+                Complete chronological log of every status transition and actor.
+            </p>
+            <div class="timeline" id="history-timeline">
+                <div style="color: #64748b;">Loading audit trail...</div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Cancel Modal -->
+    <div class="modal-backdrop" id="cancel-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title" style="color: var(--danger);">Confirm Request Cancellation</h3>
+                <button onclick="closeCancelModal()" style="border: none; background: none; font-size: 1.25rem; cursor: pointer;">&times;</button>
+            </div>
+            <p style="color: #475569; font-size: 0.95rem; margin-bottom: 1rem;">
+                Are you sure you want to cancel this request? The resource capacity will be immediately released back to the pool (BR9).
+            </p>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeCancelModal()">Keep Request</button>
+                <button class="btn btn-danger" id="modal-confirm-btn" onclick="executeCancelCurrent()">Yes, Cancel Request</button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        Property Maintenance Request System &bull; Software Engineering SAT II
+    </footer>
+
+    <script src="js/app.js"></script>
+    <script>
+        let currentRequest = null;
+        let requestId = null;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            requestId = urlParams.get('id');
+
+            const user = Auth.getUser();
+            const isAdmin = Auth.isAdmin();
+            renderNavbar(isAdmin ? 'admin-requests' : 'my-requests');
+
+            // Configure back button
+            document.getElementById('btn-back').href = isAdmin ? 'admin-requests.html' : 'my-requests.html';
+
+            if (!requestId) {
+                showAlert('danger', 'No Request ID specified in URL.');
+                return;
+            }
+
+            loadRequestDetails();
+        });
+
+        async function loadRequestDetails() {
+            const user = Auth.getUser();
+            const isAdmin = Auth.isAdmin();
+
+            try {
+                // 1. Fetch Request Details (BR10 Security validated on backend)
+                currentRequest = await apiFetch(`/requests/${requestId}?userId=${user ? user.id : 0}&isAdmin=${isAdmin}`);
+                renderDetailsView();
+
+                // 2. Fetch Audit History
+                const history = await apiFetch(`/requests/${requestId}/history`);
+                renderTimeline(history);
+
+            } catch (err) {
+                showAlert('danger', `Failed to load request: ${err.message}`);
+            }
+        }
+
+        function renderDetailsView() {
+            const req = currentRequest;
+            const user = Auth.getUser();
+            const isAdmin = Auth.isAdmin();
+
+            document.getElementById('ticket-title').textContent = `Maintenance Ticket #${req.requestId}`;
+            document.getElementById('header-status-badge').innerHTML = getStatusBadge(req.status);
+            document.getElementById('ticket-charge-badge').textContent = `Charge: Rs. ${parseFloat(req.charge).toFixed(2)}`;
+
+            document.getElementById('detail-ticket-id').textContent = `#${req.requestId}`;
+            document.getElementById('detail-service-type').textContent = `${req.serviceType} (${req.resource ? req.resource.reference : ''})`;
+            document.getElementById('detail-reference').textContent = req.reference;
+            document.getElementById('detail-submitted-date').textContent = formatDate(req.submittedDate);
+            document.getElementById('detail-description').textContent = req.description;
+
+            // Render Snapshot Data (BR3)
+            const snapshotBody = document.getElementById('snapshot-table-body');
+            try {
+                const snap = JSON.parse(req.snapshotData);
+                snapshotBody.innerHTML = `
+                    <tr><td style="width: 25%; font-weight: 600; color: #475569;">Requester Name</td><td>${snap.userName || '-'}</td></tr>
+                    <tr><td style="font-weight: 600; color: #475569;">Requester Contact</td><td>${snap.userPhone || '-'} &bull; ${snap.userEmail || '-'}</td></tr>
+                    <tr><td style="font-weight: 600; color: #475569;">Allocated Resource</td><td>${snap.resourceReference || ''} - ${snap.resourceName || ''}</td></tr>
+                    <tr><td style="font-weight: 600; color: #475569;">Property Reference</td><td><code>${snap.reference || '-'}</code></td></tr>
+                    <tr><td style="font-weight: 600; color: #475569;">Chargeable Amount</td><td>Rs. ${parseFloat(snap.chargeableAmount || 0).toFixed(2)}</td></tr>
+                    <tr><td style="font-weight: 600; color: #475569;">Preserved Charge</td><td><strong>Rs. ${parseFloat(snap.charge || 0).toFixed(2)}</strong></td></tr>
+                    <tr><td style="font-weight: 600; color: #475569;">Snapshot Recorded At</td><td>${formatDate(snap.snapshotTimestamp)}</td></tr>
+                `;
+            } catch (e) {
+                snapshotBody.innerHTML = `<tr><td colspan="2"><pre style="font-size: 0.8rem;">${req.snapshotData}</pre></td></tr>`;
+            }
+
+            // User Cancellation Bar (FR8, BR9)
+            const userCancelBar = document.getElementById('user-cancel-bar');
+            if (!isAdmin && req.status === 'SUBMITTED' && user && req.user && req.user.id === user.id) {
+                userCancelBar.style.display = 'block';
+            } else {
+                userCancelBar.style.display = 'none';
+            }
+
+            // Admin Status Advancement Bar (FR7, BR8)
+            const adminBar = document.getElementById('admin-action-bar');
+            const adminBtnContainer = document.getElementById('admin-buttons-container');
+
+            if (isAdmin) {
+                adminBar.style.display = 'block';
+                adminBtnContainer.innerHTML = '';
+
+                if (req.status === 'SUBMITTED') {
+                    adminBtnContainer.innerHTML = `
+                        <button class="btn btn-primary btn-sm" onclick="advanceStatus('APPROVED/ASSIGNED')">
+                            Advance to &rarr; APPROVED/ASSIGNED
+                        </button>
+                    `;
+                } else if (req.status === 'APPROVED/ASSIGNED') {
+                    adminBtnContainer.innerHTML = `
+                        <button class="btn btn-primary btn-sm" onclick="advanceStatus('IN_PROGRESS')">
+                            Advance to &rarr; IN_PROGRESS
+                        </button>
+                    `;
+                } else if (req.status === 'IN_PROGRESS') {
+                    adminBtnContainer.innerHTML = `
+                        <button class="btn btn-success btn-sm" onclick="advanceStatus('COMPLETED')">
+                            Mark as &rarr; COMPLETED ✅
+                        </button>
+                    `;
+                } else if (req.status === 'COMPLETED') {
+                    adminBar.className = 'alert alert-success';
+                    adminBar.innerHTML = '✅ <strong>Completed:</strong> This maintenance request has reached its final completed lifecycle.';
+                } else if (req.status === 'CANCELLED') {
+                    adminBar.className = 'alert alert-danger';
+                    adminBar.innerHTML = '🚫 <strong>Cancelled:</strong> This request was cancelled by the requester.';
+                }
+            }
+        }
+
+        function renderTimeline(historyList) {
+            const timeline = document.getElementById('history-timeline');
+            if (!historyList || historyList.length === 0) {
+                timeline.innerHTML = '<div style="color: #64748b;">No history recorded yet.</div>';
+                return;
+            }
+
+            timeline.innerHTML = historyList.map(h => {
+                const actorName = h.actor ? `${h.actor.name} (${h.actor.role})` : 'System';
+                const transitionText = h.oldStatus 
+                    ? `Status changed from <strong>${h.oldStatus}</strong> &rarr; <strong>${h.newStatus}</strong>`
+                    : `Initial Request Submitted in status <strong>${h.newStatus}</strong>`;
+
+                return `
+                    <div class="timeline-item">
+                        <div class="timeline-dot"></div>
+                        <div class="timeline-content">
+                            <div>${transitionText}</div>
+                            <div class="timeline-meta">
+                                By: <strong>${actorName}</strong> &bull; ${formatDate(h.eventAt)}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function advanceStatus(targetStatus) {
+            const user = Auth.getUser();
+            try {
+                await apiFetch(`/requests/${requestId}/status`, {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        newStatus: targetStatus,
+                        actorId: user.id
+                    })
+                });
+                showToast(`Status updated to ${targetStatus}`, 'success');
+                loadRequestDetails();
+            } catch (err) {
+                showToast(`Status update failed: ${err.message}`, 'error');
+            }
+        }
+
+        function promptCancelCurrent() {
+            document.getElementById('cancel-modal').classList.add('show');
+        }
+
+        function closeCancelModal() {
+            document.getElementById('cancel-modal').classList.remove('show');
+        }
+
+        async function executeCancelCurrent() {
+            const user = Auth.getUser();
+            const btn = document.getElementById('modal-confirm-btn');
+            btn.disabled = true;
+            btn.textContent = 'Cancelling...';
+
+            try {
+                await apiFetch(`/requests/${requestId}/cancel?userId=${user.id}`, {
+                    method: 'PUT'
+                });
+                showToast('Request cancelled successfully', 'success');
+                closeCancelModal();
+                loadRequestDetails();
+            } catch (err) {
+                showToast(`Cancel failed: ${err.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Yes, Cancel Request';
+            }
+        }
+
+        function showAlert(type, html) {
+            const container = document.getElementById('alert-container');
+            container.innerHTML = `<div class="alert alert-${type}">${html}</div>`;
+        }
+    </script>
+</body>
+</html>
